@@ -81,53 +81,59 @@ class VideoPlayer {
       try {
         _hls = Hls(
           HlsConfig(
-            xhrSetup:
-              (web.XMLHttpRequest xhr, String _) {
-                if (headers.isEmpty) {
-                  return;
-                }
+            xhrSetup: (web.XMLHttpRequest xhr, String _) {
+              if (headers.isEmpty) {
+                return;
+              }
 
-                if (headers.containsKey('useCookies')) {
-                  xhr.withCredentials = true;
+              if (headers.containsKey('useCookies')) {
+                xhr.withCredentials = true;
+              }
+              headers.forEach((String key, String value) {
+                if (key != 'useCookies') {
+                  xhr.setRequestHeader(key, value);
                 }
-                headers.forEach((String key, String value) {
-                  if (key != 'useCookies') {
-                    xhr.setRequestHeader(key, value);
-                  }
-                });
-              }.toJS,
+              });
+            }.toJS,
           ),
         );
         _hls!.attachMedia(_videoElement);
-        _hls!.on('hlsMediaAttached', ((String _, JSObject __) {
-          _hls!.loadSource(uri.toString());
-        }.toJS));
-        _hls!.on('hlsError', (String _, JSObject data) {
-          try {
-            final ErrorData _data = ErrorData(data);
-            if (_data.fatal) {
-              _eventController.addError(PlatformException(
-                code: _kErrorValueToErrorName[2]!,
-                message: _data.type,
-                details: _data.details,
-              ));
-            }
-          } catch (e) {
-            debugPrint('Error parsing hlsError: $e');
-          }
-        }.toJS);
+        _hls!.on(
+            'hlsMediaAttached',
+            ((String _, JSObject __) {
+              _hls!.loadSource(uri.toString());
+            }.toJS));
+        _hls!.on(
+            'hlsError',
+            (String _, JSObject data) {
+              try {
+                final ErrorData _data = ErrorData(data);
+                if (_data.fatal) {
+                  _eventController.addError(PlatformException(
+                    code: _kErrorValueToErrorName[2]!,
+                    message: _data.type,
+                    details: _data.details,
+                  ));
+                }
+              } catch (e) {
+                debugPrint('Error parsing hlsError: $e');
+              }
+            }.toJS);
 
         if (canPlayHlsNatively()) {
           // Because on safari we cannot use the uri.toString
           // when we want to force headers.
-          _videoElement.addEventListener('durationchange', (dynamic event) {
-            // trying to get durationchange to get the correct width and height
-            if (_videoElement.duration == 0) {
-              return;
-            }
-            _onVideoElementInitialization(event);
-            setBuffering(false);
-          }.toJS);
+          _videoElement.addEventListener(
+            'durationchange',
+            (web.Event event) {
+              // trying to get durationchange to get the correct width and height
+              if (_videoElement.duration == 0) {
+                return;
+              }
+              _onVideoElementInitialization(event);
+              setBuffering(false);
+            }.toJS,
+          );
         } else {
           _videoElement.onCanPlay.listen((dynamic event) {
             _onVideoElementInitialization(event);
