@@ -1,5 +1,12 @@
+## 1.2.1
+* Fixes web options not being exposed by the library
+## 1.2.0
+* Migrates package and tests to `package:web``.
+* Fixes infinite event loop caused by `seekTo` when the video ends.
+* Add set options support
 ## 1.1.1
 * Fixed video buffering crashing on slow networks (#53)
+* Updated js dependency
 ## 1.1.0
 * Updated http dependency
 ## 1.0.0+3
