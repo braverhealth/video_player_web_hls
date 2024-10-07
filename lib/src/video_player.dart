@@ -63,8 +63,13 @@ class VideoPlayer {
   bool _isBuffering = false;
   Hls? _hls;
 
+  /// Force use hlsjs when set to `true`.
+  bool? _hlsFallback;
+
   /// Returns the [Stream] of [VideoEvent]s from the inner [html.VideoElement].
   Stream<VideoEvent> get events => _eventController.stream;
+
+  final List<StreamSubscription> _eventsSubscriptions = [];
 
   /// Initializes the wrapped [html.VideoElement].
   ///
@@ -77,7 +82,8 @@ class VideoPlayer {
       ..controls = false
       ..playsInline = true;
 
-    if (await shouldUseHlsLibrary()) {
+    if (_hlsFallback == true || await shouldUseHlsLibrary()) {
+      _hlsFallback = false;
       try {
         _hls = Hls(
           HlsConfig(
@@ -119,13 +125,12 @@ class VideoPlayer {
                 debugPrint('Error parsing hlsError: $e');
               }
             }.toJS);
-
         if (canPlayHlsNatively()) {
           // Because on safari we cannot use the uri.toString
           // when we want to force headers.
           _videoElement.addEventListener(
             'durationchange',
-            (web.Event event) {
+                (web.Event event) {
               // trying to get durationchange to get the correct width and height
               if (_videoElement.duration == 0) {
                 return;
@@ -135,10 +140,10 @@ class VideoPlayer {
             }.toJS,
           );
         } else {
-          _videoElement.onCanPlay.listen((dynamic event) {
-            _onVideoElementInitialization(event);
+          _eventsSubscriptions.add(_videoElement.onCanPlay.listen((dynamic _) {
+            _onVideoElementInitialization(_) ;
             setBuffering(false);
-          });
+          }));
         }
       } catch (e) {
         throw NoScriptTagException();
@@ -150,41 +155,57 @@ class VideoPlayer {
           return;
         }
         _onVideoElementInitialization(event);
-      }.toJS;
-      _videoElement.addEventListener('durationchange', onDurationChange);
+      };
+      _eventsSubscriptions
+          .add(_videoElement.onDurationChange.listen(onDurationChange));
     }
 
-    _videoElement.onCanPlayThrough.listen((dynamic _) {
-      setBuffering(false);
-    });
+    // Needed for Safari iOS 17, which may not send `canplay`.
+    _videoElement.onLoadedMetadata.listen(_onVideoElementInitialization);
 
-    _videoElement.onPlaying.listen((dynamic _) {
+    _eventsSubscriptions.add(_videoElement.onCanPlayThrough.listen((dynamic _) {
       setBuffering(false);
-    });
+    }));
 
-    _videoElement.onWaiting.listen((dynamic _) {
+    _eventsSubscriptions.add(_videoElement.onPlaying.listen((dynamic _) {
+      setBuffering(false);
+    }));
+
+    _eventsSubscriptions.add(_videoElement.onWaiting.listen((dynamic _) {
       setBuffering(true);
       _sendBufferingRangesUpdate();
-    });
+    }));
 
     // The error event fires when some form of error occurs while attempting to load or perform the media.
-    _videoElement.onError.listen((web.Event _) {
-      setBuffering(false);
+    _eventsSubscriptions.add(_videoElement.onError.listen((web.Event _) {
       // The Event itself (_) doesn't contain info about the actual error.
       // We need to look at the HTMLMediaElement.error.
       // See: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/error
       final web.MediaError error = _videoElement.error!;
+      final errorCode = error.code;
+      if (_hls == null && _hlsFallback == null && errorCode == 4) {
+        // MEDIA_ERR_SRC_NOT_SUPPORTED
+        // Native play did not succeed, fallback to hlsjs
+        _hlsFallback = true;
+        // Cancel all event listeners and re initialize
+        for (final sub in _eventsSubscriptions) {
+          sub.cancel();
+        }
+        initialize();
+        return;
+      }
+      setBuffering(false);
       _eventController.addError(PlatformException(
         code: _kErrorValueToErrorName[error.code]!,
         message: error.message != '' ? error.message : _kDefaultErrorMessage,
         details: _kErrorValueToErrorDescription[error.code],
       ));
-    });
+    }));
 
-    _videoElement.onEnded.listen((dynamic _) {
+    _eventsSubscriptions.add(_videoElement.onEnded.listen((dynamic _) {
       setBuffering(false);
       _eventController.add(VideoEvent(eventType: VideoEventType.completed));
-    });
+    }));
   }
 
   /// Attempts to play the video.
@@ -293,6 +314,9 @@ class VideoPlayer {
     }
     _videoElement.load();
     _hls?.stopLoad();
+    for (final sub in _eventsSubscriptions) {
+      sub.cancel();
+    }
   }
 
   // Sends an [VideoEventType.initialized] [VideoEvent] with info about the wrapped video.
@@ -414,7 +438,7 @@ class VideoPlayer {
       }
 
       if (!options.controls.allowPictureInPicture) {
-        _videoElement.disablePictureInPicture = true.toJS;
+        _videoElement.disablePictureInPicture = true;
       }
     }
 
@@ -424,7 +448,7 @@ class VideoPlayer {
     }
 
     if (!options.allowRemotePlayback) {
-      _videoElement.disableRemotePlayback = true.toJS;
+      _videoElement.disableRemotePlayback = true;
     }
   }
 
