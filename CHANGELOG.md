@@ -1,3 +1,9 @@
+## 1.3.0
+* Bump web to ">=1.0.0 <2.0.0" 
+* Bump min sdk to 3.4.0 and min flutter to 3.22.0
+## 1.2.2
+* Fallback to hlsjs when native player fails
+* Fixed some m3u8 files that could not be played normally
 ## 1.2.1
 * Fixes web options not being exposed by the library
 ## 1.2.0
