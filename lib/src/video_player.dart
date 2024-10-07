@@ -125,10 +125,26 @@ class VideoPlayer {
                 debugPrint('Error parsing hlsError: $e');
               }
             }.toJS);
-        _eventsSubscriptions.add(_videoElement.onCanPlay.listen((dynamic _) {
-          _onVideoElementInitialization(_) ;
-          setBuffering(false);
-        }));
+        if (canPlayHlsNatively()) {
+          // Because on safari we cannot use the uri.toString
+          // when we want to force headers.
+          _videoElement.addEventListener(
+            'durationchange',
+                (web.Event event) {
+              // trying to get durationchange to get the correct width and height
+              if (_videoElement.duration == 0) {
+                return;
+              }
+              _onVideoElementInitialization(event);
+              setBuffering(false);
+            }.toJS,
+          );
+        } else {
+          _eventsSubscriptions.add(_videoElement.onCanPlay.listen((dynamic _) {
+            _onVideoElementInitialization(_) ;
+            setBuffering(false);
+          }));
+        }
       } catch (e) {
         throw NoScriptTagException();
       }
@@ -308,10 +324,18 @@ class VideoPlayer {
     final Duration? duration =
         convertNumVideoDurationToPluginDuration(_videoElement.duration);
 
+    // We need to force the size of video element if 0
+    // Because safari returns
+    // the videoHeigh and videoWidth 0 even on the
+    // event durationchange which has content
     final Size? size = _videoElement.videoHeight.isFinite
         ? Size(
-            _videoElement.videoWidth.toDouble(),
-            _videoElement.videoHeight.toDouble(),
+            _videoElement.videoWidth.toDouble() > 0
+                ? _videoElement.videoWidth.toDouble()
+                : 1280.0,
+            _videoElement.videoHeight.toDouble() > 0
+                ? _videoElement.videoHeight.toDouble()
+                : 720.0,
           )
         : null;
 
@@ -372,8 +396,7 @@ class VideoPlayer {
 
   Future<bool> shouldUseHlsLibrary() async {
     return isSupported() &&
-        (uri.toString().contains('m3u8') || await _testIfM3u8()) &&
-        !canPlayHlsNatively();
+        (uri.toString().contains('m3u8') || await _testIfM3u8());
   }
 
   Future<bool> _testIfM3u8() async {
